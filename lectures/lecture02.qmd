@@ -42,7 +42,7 @@ def toss_globe(proportion, N):
 We can toss a globe covered $70\%$ by water ten times by calling `toss_globe(p=0.7, N=10)`, which gives
 ```{python}
 #|echo: false
-sample = toss_globe(proportion=0.7, N=10)
+sample = toss_globe(proportion=0.75, N=10)
 sample
 ```
 ## 2) The estimand
@@ -88,22 +88,121 @@ Normalizing by the total number of ways we can calculate the probabilities each 
   mplt.show()
 ```
 
-Turn the estimator into a function
+This estimator calculates the estimate probability for each explanation $p$ of the sample. In the Bayesian jargon, it computes the posterior distribution for $p$. We code it into a function for future convnience:
+```{python}
+def compute_posterior(sample, proportions):
+    W, L = np.sum(sample=='W'), np.sum(sample=='L')
+    ways = [(4 * p)**W * (4 - 4 * p)**L for p in proportions]
+    return np.array(ways)/np.sum(ways)
+  
+```
 
 ## 4) Testing
-We have thus far succesfully designed the generative model, defined the estimand and designed the statistical estimator. We have also anticipated one estimate by applying the estimator to the first sample we got from the generative model. Now we dive deeper in testing if the estimand and estimator are valid.
+We have thus far succesfully designed the generative model, defined the estimand and designed the statistical estimator. We have also anticipated one estimate by applying the estimator to the first sample we got from the generative model. Now focus on testing if the estimand and estimator are valid.
 
 Let us simulate extreme cases.
 
+### Water planet
+Generate sample with water proportion equal to 1.
 ```{python}
 sample = toss_globe(proportion=1, N=10)
 sample
 ```
 
+Compute the posterior
+```{python}
+  proportions = [0, 0.25, 0.5, 0.75, 1]
+  compute_posterior(sample, proportions)
+```
 
+We see the most likely proportion is the correct $p=1$.
+
+### Land planet
+Generate sample with water proportion equal to 0.
 ```{python}
 sample = toss_globe(proportion=0, N=10)
 sample
 ```
 
-Test also in the 0.5 proportion several times and see if it converges
+Compute the posterior
+```{python}
+  proportions = [0, 0.25, 0.5, 0.75, 1]
+  compute_posterior(sample, proportions)
+```
+
+We see the most likely proportion is the correct $p=0$. Now lets play with large number of trials with $p=0.5$ and see if we recover this frequency of water of observations
+```{python}
+sample = [toss_globe(proportion=0.5, N=10) for _ in range(1_000)]
+sample = np.concatenate(sample)  # reshape it 1D array
+np.sum(sample=='W')/np.size(sample)  # compute the frequency of water
+```
+
+# Abstracting: Bayes theorem
+Let's turn the concrete example we have worked on into some more abstract reasoning before continuing. 
+
+The whole idea behind Bayesian analysis is that explanations with the largest number of ways of explaining the data are more likely. Bayesian statistics is a counting problem. Where's Bayes theorem in it?
+
+This counting problem when normalized by the total number of possible outcomes becomes a probability problem. The probability for observing $W$ water and $L$ land instances when tossing the globe for a given proportion $p$ of water is
+$$ 
+\text{Pr}(W,L|p) = \frac{(W+L)!}{W!L!}p^W (1 - p) ^ L
+$$
+
+saying that proportions with more ways to reproduce the sample are more plausible equals calculating the probability of $p$, given the observed sequence of $W$ and $L$, $\text{Pr}(p|W,L)$. If you are familiar with Bayes theorem, you know you can calculate this "inverted" conditional as
+
+$$
+\text{Pr}(p|W,L) = \frac{\text{Pr}(W,L|p)\text{Pr}(p)}{\text{Pr}(W,L)}
+$$
+
+The main theme in Bayesian statistics, however, is not Bayes theorem. Bayes theorem derives from the basic rules of probabilities and can be used in non-bayesian analysis. The main distinction of Bayesian reasoning is the philosophy of probabilities as measuring beliefs or creedances. $\text{Pr}(W,L|p)$, is the likelihood function and $\text{Pr}(p)$ is the prior distribution: the initial guess for the distribution of the explanations. Calculating $\text{Pr}(p|W,L)$ can be seen as updating the initial belief on $p$ given by the prior in face of the observed data (likelihood). If new observations come, the posterior is used as the new prior and the process is itrated, updating our belief about the distribution of $p$.
+
+The $\text{Pr}(W,L)$ term on the denominator is the normalization constant, formally calculated as
+
+$$
+\text{Pr}(W,L) = \mathbb{E}[\text{Pr}(W,L|p)] =  \int \text{Pr}(W,L|p)\text{Pr}(p) \mathrm{d}p
+$$
+
+# Grid approximation
+What if we allow our 4-sided globe to have instead 11 sides? Well, now the possible proportions of water are
+```{python}
+proportions11 = np.linspace(0, 1, 11, endpoint=True)
+proportions11
+```
+
+Let's assume $p=0.7$ and toss the globe $10$ times. Let's calculate the posterior and repeat this process for a 21-sided globe.
+```{python}
+sample11 = toss_globe(proportion=0.7, N=10)
+sample21 = toss_globe(proportion=0.7, N=10)
+
+post11 = compute_posterior(proportions=proportions11, sample=sample11)
+
+proportions21 = np.linspace(0, 1, 21, endpoint=True)
+post21 = compute_posterior(proportions=proportions21, sample=sample21)
+```
+
+We plot the results in @fig-plot2.
+
+```{python}
+#| warning: false
+#| label: fig-plot2
+#| fig-cap: "Distribution of $p$ for 11- and 21-sided globes"
+fig, (ax, ay) = mplt.subplots(1, 2, figsize=(10, 5))
+data = [f'{prop:.1f}' for prop in proportions11]
+ax.bar(data, post11)
+ax.set_title('11-sides')
+ax.set_xticklabels(labels=data, rotation=90)
+ax.set_ylabel('proportion probability')
+
+data = [f'{prop:.2f}' for prop in proportions21]
+ay.set_xticklabels(labels=data, rotation=90)
+ay.bar(data, post21)
+ay.set_title('21-sides')
+fig.supxlabel('water proportions')
+fig.tight_layout()
+mplt.show()
+
+```
+
+Increasing the number of sides approaches our polygonal dies closer to becoming a proper globe. Approximating the posterior of the globe with increasing number of sides is a *grid approximation*. The grid is the number of sides.
+
+# Posterior Predictive Distribution
+Given the posterior distribution, how can we make predictions? Well, could choose a particular value of $p$, maybe the mode, the peak of the distribution, the most probable value, and use to make predictions about water and land observations with the aid of the likelihood function. But how do we incorporate the uncertainty in $p$ in our estimates? How do we propagate the associated error of choosing a particular value and then doing a prediction? 
