@@ -1,9 +1,7 @@
 ---
 title: "Statistical Rethinking: Lecture 02"
-subtitle: "with Python Codes"
-format:
-  pdf:
-    code-fold: true
+subtitle: "with Python code"
+format: pdf
 jupyter: python3
 ---
 # Tossing the globe example
@@ -49,12 +47,7 @@ sample
 Our estimand will the number of ways each explanation can reproduce the sample. In this case, the number of ways each proportion of water $p$ covering the globe can reproce a series of observations. That value of $p$ with the largest number of ways to reproduce the data is more plausible to be the true value. Equivalently, instead of counting, we can normalize by the total number of ways of explaining the data and work with a probability. In this manner, our estimand will be the probability distribution for the prorportion of water $p$.
 
 ## 3) The estimator
-The probability of observing an array of $W$ water and $L$ land observations is
-$$ 
-\text{Pr}(W,L) = p^W (1 - p) ^ L,
-$$
-
-since each observation is independent. For a total of $N=W+L$ tosses, the expected number of water and land observations are given by the above equation multiplied by $4^N$, or $4^L \times 4^W$:
+For a total of $N=W+L$ tosses, the expected number of water and land observations are given by:
 $$ 
 W\quad \text{or} \quad L = (4p)^W (4 - 4p) ^ L
 $$
@@ -75,11 +68,13 @@ Normalizing by the total number of ways we can calculate the probabilities each 
   probabilities = np.array(ways)/np.sum(ways)
   probabilities
 ```
-
+```{python}
+#| echo: false
+  import matplotlib.pyplot as mplt
+```
 ```{python}
 #| label: fig-plot
 #| fig-cap: "Bar plot for the plausability of each proportion of"
-  import matplotlib.pyplot as mplt
   fig, ax = mplt.subplots()
   ax.bar([str(prop) for prop in proportions], probabilities)
   ax.set_xlabel('water proportions')
@@ -204,5 +199,94 @@ mplt.show()
 
 Increasing the number of sides approaches our polygonal dies closer to becoming a proper globe. Approximating the posterior of the globe with increasing number of sides is a *grid approximation*. The grid is the number of sides.
 
-# Posterior Predictive Distribution
-Given the posterior distribution, how can we make predictions? Well, could choose a particular value of $p$, maybe the mode, the peak of the distribution, the most probable value, and use to make predictions about water and land observations with the aid of the likelihood function. But how do we incorporate the uncertainty in $p$ in our estimates? How do we propagate the associated error of choosing a particular value and then doing a prediction? 
+# Continuum limit
+Recall that
+$$ 
+\text{Pr}(W,L|p) = \frac{1}{Z}p^W (1 - p) ^ L
+$$
+
+where the "partition function" reads $Z=\sum_p p^W (1 - p)^L$. As the number of sides approach infinity, the sum approaches the integral
+$$
+Z = \int p^W (1-p)^L \mathrm{d}p = \frac{W!L!}{(W + L +1)!}, \quad W, L\in \mathbb{Z}
+$$ 
+
+so we recognize
+
+$$ 
+\text{Pr}(W,L|p) = \text{Beta}(W+1, L+1) = \frac{(W+L+1)!}{W!L!}p^W (1 - p) ^ L
+$$
+
+# Posterior: updating the prior
+Before any observations, we assume any proportion $p$ is equally plausible. So the probabiltiy for $p$ is a constant normalized so it reads as probability:
+$$
+\text{Pr}(p)_0 = \frac{u}{Z_0},
+$$
+where $Z_0$ is basically the `np.sum(ways)` term in our previous code snippets.
+
+The first observation, say, water, allows us to calculate the posterior:
+$$
+\text{Pr}(p)_1  = \frac{p^1 (1-p^0) \text{Pr}(p)_0}{Z_1}
+$$
+
+and so the second observation gives $\text{Pr}(p)_2$ in the same manner, with $Z_2$ being whatever constant needed to normalize the probability to 1. For the beta distribution is easy to find analytical expressions for the posteriors as we iterate. Instead, let us generalize our function to update posteriors numerically. First we import `beta` from `scipy`
+```{python}
+from scipy.stats import beta
+```
+
+And now we write our function
+```{python}
+def compute_posterior(proportions, sample, prior):
+    W, L = np.sum(sample=='W'), np.sum(sample=='L')
+    Wprior = np.sum(prior=='W')
+    Lprior = np.sum(prior=='L')
+    return beta.pdf(proportions, W + Wprior, L + Lprior)
+```
+```{python}
+x_values = np.linspace(0, 1, 1000)
+
+the_sample = np.array(['W', 'W', 'L', 'W', 'L', 'W', 'L', 'L', 'W'])
+prior = np.array(['W', 'W', 'L', 'W', 'L', 'W', 'L', 'L', 'W'])
+
+# Compute the posterior values for the given x values
+posterior_values = compute_posterior(x_values, the_sample, prior)
+
+# Plot the curve
+mplt.figure()
+mplt.plot(x_values, posterior_values, label='Posterior')
+mplt.title('Posterior Distribution')
+mplt.xlabel('Proportion')
+mplt.ylabel('Density')
+mplt.legend()
+mplt.show()
+```
+Basically we count the ocurrences of water and land in the sample and in the prior, and use them as parameters to sample from the beta distribution.
+for a continuous .
+
+# Working with the posterior
+## Sampling the posterior
+Suppose we constructed the posterior for the observation of 6 water and 3 land. We can then sample the posterior distribution $\text{Beta}(p, 6+1, 3+1)$. A thousand samples read
+```{python}
+post_samples = np.random.beta(6+1, 3+1, 1000)
+```
+## Posterior Predictive Distribution
+Given the posterior distribution, how can we make predictions? Well, we could choose a particular value of $p$, maybe the mode, the peak of the distribution, the most probable value, and use it to make predictions about water and land observations with using the likelihood function or the generative model. But how do we incorporate the uncertainty in $p$ in our estimates? How do we propagate the associated error of choosing a particular value and then doing a prediction? The solution is to sample values for $p$ from the posterior, then calculate the likelihood for a given $p$ or sample the generative model.
+
+Below, we sample the water proportions from its posterior distribution and then sample the generative model 10-times for each value of proportion.
+
+```{python}
+post_samples = np.random.beta(6+1, 3+1, 10_000)
+pred_post = [np.sum(toss_globe(p, 10)=='W') for p in post_samples]
+
+pred64 = [np.sum(toss_globe(0.65, 10)=='W') for _ in range(10_000)]
+mplt.hist(pred_post, bins=np.arange(12)-0.5, alpha=0.3, label='predictive posterior')
+mplt.hist(pred64, bins=np.arange(12)-0.5, alpha=0.3, label='p=0.64 posterior')
+mplt.legend()
+mplt.xlabel('water observations')
+mplt.ylabel('count')
+mplt.xticks(range(11))
+mplt.grid(axis='y', alpha=0.75)
+mplt.title('water observations counts from samples of the \n posterior predictive vs particular value posterior')
+mplt.show()
+```
+
+Notice the Predictive posterior is much more spread out, because it incorporates the uncertainty in the estimate for $p$.
