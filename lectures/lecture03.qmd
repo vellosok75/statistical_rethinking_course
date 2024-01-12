@@ -96,5 +96,23 @@ $$
 The `simulate_weigth` function is our generative model encapsulating the scientific model. Now we focus on the statistical model, or estimator.
 
 ## The estimator
-Since our estimand is a regression model, we need to determine the model's parameters: the 
-We'll be analyzing human height and weight data from Nancy Howell's book "Life Histories of the Dobe !Kung"
+The estimator will be the expected Weight at a given height, for which we assume a linear model
+$$
+\mathbb{E}[W_i|H_i] = \alpha + \beta H_i
+$$
+
+the posterior will be given by
+$$
+\text{Pr}(\alpha, \beta, \sigma | W_i, H_i) = \frac{1}{Z}\text{Pr}(W_i|H_i, \alpha, \beta, \sigma)\text{Pr}(\alpha, \beta, \sigma)
+$$
+
+since the posterior is over the parameters of the regression model, it actually consists on the distribution for the lines describing the linear associations.
+
+this modeling leads to
+$$
+W_i \sim \text{Normal}(\alpha + \beta H_i, \sigma)
+$$
+
+TODO: generate observations with $\sigma=10$, $\beta=0.5$. Compute the posterior for a grid of 11 $\beta$ values. Plot the posterior. Project the distribution in outcome space (plot the resulting lines)
+
+Next, generalize and estimate $\alpha$ as well. Plot the distribution density in the parameter $\alpha$ $\beta$ space.
